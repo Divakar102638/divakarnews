@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Omni News | Vertical Flip</title>
+    <style>
+        :root { --primary: #0ea5e9; --bg: #000; }
+        body, html { margin: 0; padding: 0; height: 100%; background: var(--bg); font-family: sans-serif; overflow: hidden; }
+        .nav { position: fixed; top: 0; width: 100%; display: flex; justify-content: space-between; padding: 15px; z-index: 1000; background: linear-gradient(to bottom, black, transparent); box-sizing: border-box; }
+        .logo { color: var(--primary); font-weight: bold; }
+        select { background: #1e293b; color: white; border-radius: 20px; padding: 5px 10px; }
+        
+        .news-feed { height: 100vh; overflow-y: scroll; snap-type: y mandatory; scroll-behavior: smooth; perspective: 1200px; }
+        .news-card { height: 100vh; width: 100%; snap-align: start; position: relative; transform-style: preserve-3d; transition: 0.5s; }
+        .card-bg { position: absolute; width: 100%; height: 100%; background-size: cover; background-position: center; }
+        .overlay { position: absolute; inset: 0; background: linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.9) 80%, black); }
+        .content { position: absolute; bottom: 0; padding: 30px; color: white; }
+        h2 { font-size: 1.5rem; margin-bottom: 10px; }
+        p { color: #cbd5e1; font-size: 1rem; }
+    </style>
+</head>
+<body>
+
+<div class="nav">
+    <div class="logo">OMNI NEWS</div>
+    <select id="langPicker" onchange="fetchRealTimeNews()">
+        <option value="en">English</option>
+        <option value="te">తెలుగు</option>
+        <option value="hi">हिन्दी</option>
+    </select>
+</div>
+
+<div class="news-feed" id="feed"></div>
+
+<script>
+    let currentLocation = 'Andhra Pradesh';
+    const API_BASE_URL = 'https://your-flask-app-url.herokuapp.com'; // Replace with your deployed Flask URL
+
+    async function fetchRealTimeNews() {
+        const lang = document.getElementById('langPicker').value;
+        const feed = document.getElementById('feed');
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}/news?lang=${lang}&location=${currentLocation}`);
+            const newsData = await response.json();
+            
+            feed.innerHTML = newsData.map((item, index) => {
+                const content = item[lang] || item['en'];
+                return `
+                    <div class="news-card">
+                        <div class="card-bg" style="background-image: url('${item.img}')">
+                            <div class="overlay"></div>
+                            <div class="content">
+                                <h2>${content.title}</h2>
+                                <p>${content.desc}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            setupFlipEffect();
+        } catch (e) {
+            feed.innerHTML = `<div style="color:white;text-align:center;padding:100px;">Start app.py first!</div>`;
+        }
+    }
+
+    function setupFlipEffect() {
+        const feed = document.getElementById('feed');
+        feed.addEventListener('scroll', () => {
+            const cards = document.querySelectorAll('.news-card');
+            cards.forEach(card => {
+                const rect = card.getBoundingClientRect();
+                if (rect.top < 0 && rect.top > -window.innerHeight) {
+                    const progress = Math.abs(rect.top) / window.innerHeight;
+                    card.style.transform = `rotateX(${progress * 90}deg)`;
+                    card.style.opacity = 1 - progress;
+                } else {
+                    card.style.transform = `rotateX(0deg)`;
+                    card.style.opacity = 1;
+                }
+            });
+        });
+    }
+
+    fetchRealTimeNews();
+</script>
+</body>
+</html>

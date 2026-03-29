@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Omni News | Real-Time Flip</title>
+    <style>
+        :root { --primary: #0ea5e9; --bg: #000; --success: #10b981; }
+        body, html { margin: 0; padding: 0; height: 100%; background: var(--bg); font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+
+        /* Navigation */
+        .nav { position: fixed; top: 0; width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; z-index: 1000; background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent); box-sizing: border-box; }
+        .logo { color: var(--primary); font-weight: bold; font-size: 1.2rem; }
+        select { background: #1e293b; color: white; border: 1px solid #334155; padding: 8px 15px; border-radius: 20px; font-weight: bold; outline: none; }
+
+        /* Flip Container */
+        .news-feed { height: 100vh; overflow-y: scroll; snap-type: y mandatory; scroll-behavior: smooth; perspective: 1200px; }
+        .news-card { height: 100vh; width: 100%; snap-align: start; position: relative; transform-style: preserve-3d; transition: transform 0.5s ease-out; }
+
+        .card-bg { position: absolute; width: 100%; height: 100%; background-size: cover; background-position: center; transition: 0.3s; }
+        .overlay { position: absolute; inset: 0; background: linear-gradient(to bottom, transparent 35%, rgba(0,0,0,0.8) 70%, rgba(0,0,0,1) 100%); }
+        
+        .content { position: absolute; bottom: 0; width: 100%; padding: 35px 25px 50px; box-sizing: border-box; color: white; z-index: 10; }
+        h2 { font-size: 1.7rem; margin-bottom: 12px; line-height: 1.2; font-weight: 700; }
+        p { font-size: 1.05rem; color: #cbd5e1; line-height: 1.6; margin-bottom: 20px; }
+        
+        .footer-info { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #334155; padding-top: 15px; }
+        .verified { color: var(--success); font-weight: bold; font-size: 0.85rem; }
+        .share-btn { background: var(--primary); color: white; border: none; padding: 6px 15px; border-radius: 15px; font-size: 0.8rem; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="nav">
+    <div class="logo">OMNI NEWS</div>
+    <select id="langPicker" onchange="fetchRealTimeNews()">
+        <option value="en">English</option>
+        <option value="te">తెలుగు</option>
+        <option value="hi">हिन्दी</option>
+    </select>
+</div>
+
+<div class="news-feed" id="feed">
+    </div>
+
+<script>
+    // 1. RENDER ENGINE
+    function renderCards(newsArray) {
+        const feed = document.getElementById('feed');
+        const lang = document.getElementById('langPicker').value;
+        
+        // Handle case where file is empty or missing
+        if (!newsArray || newsArray.length === 0) {
+            feed.innerHTML = `<div style="color:white; padding:100px; text-align:center;">No news available. Run your Python script!</div>`;
+            return;
+        }
+
+        feed.innerHTML = newsArray.map((item, index) => {
+            // Get text based on selected language from your Python JSON structure
+            const content = item[lang] ? item[lang] : item['en'];
+            const image = item.img;
+
+            return `
+            <div class="news-card" id="card-${index}">
+                <div class="card-bg" style="background-image: url('${image}')">
+                    <div class="overlay"></div>
+                    <div class="content">
+                        <h2 class="news-title">${content.title}</h2>
+                        <p class="news-desc">${content.desc}</p>
+                        <div class="footer-info">
+                            <span class="verified">✓ VERIFIED SOURCE</span>
+                            <button class="share-btn" onclick="shareMe('${content.title}')">SHARE</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `}).join('');
+        
+        setupFlipEffect();
+    }
+
+    // Global variables
+    let currentLocation = 'India'; // Default
+    let currentLang = 'en';
+
+    // API base URL (change this for deployment)
+    const API_BASE_URL = 'https://your-flask-app-url.herokuapp.com'; // Replace with your deployed Flask URL
+
+    // 2. THE FETCH LOGIC (Pulls from your Python Flask app)
+    async function fetchRealTimeNews() {
+        currentLang = document.getElementById('langPicker').value;
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}/news?lang=${currentLang}&location=${encodeURIComponent(currentLocation)}`);
+            const newsData = await response.json();
+            if (newsData.error) {
+                throw new Error(newsData.error);
+            }
+            renderCards(newsData);
+        } catch (error) {
+            console.error("Error fetching news:", error);
+            document.getElementById('feed').innerHTML = `<div style="color:white; padding:100px; text-align:center;">Error loading news: ${error.message}. Please check if Flask server is running.</div>`;
+        }
+    }
+
+    async function getLocationName(lat, lon) {
+        // Simple reverse geocoding using a free API
+        try {
+            const response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
+            const data = await response.json();
+            return data.city || data.locality || 'Global';
+        } catch (error) {
+            console.error("Reverse geocoding error:", error);
+            return 'Global';
+        }
+    }
+
+    // Haversine formula to calculate distance between two points
+    function getDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371e3; // Earth's radius in meters
+        const φ1 = lat1 * Math.PI / 180;
+        const φ2 = lat2 * Math.PI / 180;
+        const Δφ = (lat2 - lat1) * Math.PI / 180;
+        const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+        const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                  Math.cos(φ1) * Math.cos(φ2) *
+                  Math.sin(Δλ/2) * Math.sin(Δλ/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+        return R * c; // Distance in meters
+    }
+
+    async function updateLocationAndNews() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(async (position) => {
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+                
+                // Check if moved significantly
+                if (lastLat !== null && lastLon !== null) {
+                    const distance = getDistance(lastLat, lastLon, lat, lon);
+                    if (distance < DISTANCE_THRESHOLD) {
+                        return; // No significant movement, skip update
+                    }
+                }
+                
+                lastLat = lat;
+                lastLon = lon;
+                
+                const newLocation = await getLocationName(lat, lon);
+                
+                if (newLocation !== currentLocation) {
+                    console.log(`Location changed from ${currentLocation} to ${newLocation} (moved ${Math.round(getDistance(lastLat, lastLon, lat, lon)/1000)} km)`);
+                    currentLocation = newLocation;
+                    // Fetch new news for the new location
+                    await fetchRealTimeNews();
+                }
+            }, (error) => {
+                console.error("Geolocation error:", error);
+            });
+        }
+    }
+
+    // Initialize
+    async function initApp() {
+        // Get initial location
+        await updateLocationAndNews();
+        
+        // Update location every minute
+        setInterval(updateLocationAndNews, 60000); // 60 seconds
+    }
+
+    // 3. FLIP ANIMATION
+    function setupFlipEffect() {
+        const feed = document.getElementById('feed');
+        feed.addEventListener('scroll', () => {
+            const cards = document.querySelectorAll('.news-card');
+            cards.forEach(card => {
+                const rect = card.getBoundingClientRect();
+                if (rect.top < 0 && rect.top > -window.innerHeight) {
+                    const progress = Math.abs(rect.top) / window.innerHeight;
+                    card.style.transform = `rotateX(${progress * 95}deg)`;
+                    card.style.opacity = 1 - (progress * 0.5);
+                } else {
+                    card.style.transform = `rotateX(0deg)`;
+                    card.style.opacity = 1;
+                }
+            });
+        });
+    }
+
+    function shareMe(title) {
+        if (navigator.share) {
+            navigator.share({ title: title, url: window.location.href });
+        } else {
+            alert("Sharing: " + title);
+        }
+    }
+
+    // Startup
+    fetchRealTimeNews();
+</script>
+</body>
+</html>
